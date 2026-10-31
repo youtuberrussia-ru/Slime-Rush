@@ -5,604 +5,662 @@ import android.app.Activity;
 import android.os.Bundle;
 import android.view.View;
 import android.view.MotionEvent;
-import android.graphics.Canvas;
-import android.graphics.Paint;
-import android.graphics.Color;
-import android.graphics.RectF;
-import android.graphics.Typeface;
-import android.media.AudioManager;
-import android.media.ToneGenerator;
+import android.graphics.*;
 import android.content.SharedPreferences;
-
+import android.media.ToneGenerator;
+import android.media.AudioManager;
 import java.util.Random;
 
 public class MainActivity extends Activity {
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-
+    protected void onCreate(Bundle b) {
+        super.onCreate(b);
         getWindow().getDecorView().setSystemUiVisibility(
-            View.SYSTEM_UI_FLAG_FULLSCREEN |
-            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
-            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            5894 | 1024 | 512
         );
-
         setContentView(new GameView());
     }
 
     class GameView extends View {
 
-        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        Paint p = new Paint(3);
         Random random = new Random();
-
-        SharedPreferences prefs;
+        SharedPreferences save;
         ToneGenerator sound;
 
-        final int MENU = 0;
-        final int PLAYING = 1;
-        final int SHOP = 2;
-        final int GAME_OVER = 3;
+        final int MENU=0, PLAY=1, SHOP=2, OVER=3;
+        int state=MENU;
 
-        int state = MENU;
+        int coins, best, score, skin=0;
+        boolean[] owned={true,false,false,false,false};
 
-        int score = 0;
-        int bestScore;
-        int coins;
-        int selectedSkin;
-
-        boolean[] owned = {true, false, false, false};
-
-        int[] skinColors = {
-            Color.rgb(50, 240, 110),
-            Color.rgb(60, 160, 255),
-            Color.rgb(255, 100, 180),
-            Color.rgb(255, 200, 40)
+        int[] skins={
+            Color.rgb(55,255,100),
+            Color.rgb(40,170,255),
+            Color.rgb(255,90,180),
+            Color.rgb(255,205,35),
+            Color.rgb(170,90,255)
         };
 
-        String[] skinNames = {
-            "GREEN SLIME",
-            "BLUE SLIME",
-            "PINK SLIME",
-            "GOLD SLIME"
+        String[] skinNames={
+            "GREEN SLIME","BLUE SLIME",
+            "PINK SLIME","GOLD SLIME","PURPLE SLIME"
         };
 
-        int[] prices = {0, 50, 100, 200};
+        int[] prices={0,50,100,200,350};
 
-        float scale = 1;
-        float offsetX = 0;
-        float offsetY = 0;
+        float slimeX=95, slimeY=580, velocity=0;
+        float ground=650;
+        float obstacleX=500;
+        float obstacleW=65, obstacleH=80;
+        float coinX=750, coinY=540;
+        float speed=7;
+        float animation=0;
 
-        float slimeX = 75;
-        float slimeY = 625;
-        float velocity = 0;
+        int obstacleType=0;
+        boolean jumping=false;
+        boolean soundOn=true;
 
-        float ground = 690;
-
-        float obstacleX = 450;
-        float obstacleWidth = 48;
-        float obstacleHeight = 65;
-        float obstacleSpeed = 8;
-
-        float coinX = 650;
-        float coinY = 575;
-
-        boolean jumping = false;
-
-        long lastTime = 0;
+        long last=0;
+        float sx, ox, oy;
 
         GameView() {
             super(MainActivity.this);
 
-            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+            save=getSharedPreferences("slime_save",0);
+            coins=save.getInt("coins",50);
+            best=save.getInt("best",0);
+            skin=save.getInt("skin",0);
 
-            prefs = getSharedPreferences(
-                "slime_rush_save",
-                MODE_PRIVATE
-            );
+            for(int i=0;i<5;i++)
+                owned[i]=save.getBoolean("owned"+i,i==0);
 
-            bestScore = prefs.getInt("best", 0);
-            coins = prefs.getInt("coins", 50);
-            selectedSkin = prefs.getInt("skin", 0);
-
-            for (int i = 0; i < 4; i++) {
-                owned[i] = prefs.getBoolean("owned" + i, i == 0);
-            }
-
-            sound = new ToneGenerator(
-                AudioManager.STREAM_MUSIC, 75
-            );
+            sound=new ToneGenerator(AudioManager.STREAM_MUSIC,65);
+            setLayerType(View.LAYER_TYPE_SOFTWARE,null);
         }
 
-        void save() {
-            SharedPreferences.Editor e = prefs.edit();
+        void saveData() {
+            SharedPreferences.Editor e=save.edit();
+            e.putInt("coins",coins);
+            e.putInt("best",best);
+            e.putInt("skin",skin);
 
-            e.putInt("best", bestScore);
-            e.putInt("coins", coins);
-            e.putInt("skin", selectedSkin);
-
-            for (int i = 0; i < 4; i++) {
-                e.putBoolean("owned" + i, owned[i]);
-            }
+            for(int i=0;i<5;i++)
+                e.putBoolean("owned"+i,owned[i]);
 
             e.apply();
         }
 
-        void playSound(int type) {
-            try {
-                sound.startTone(type, 130);
-            } catch (Exception ignored) {}
+        void color(int c) {
+            p.setColor(c);
+            p.setShader(null);
+            p.setStyle(Paint.Style.FILL);
         }
 
-        void text(
-            Canvas c, String value,
-            float x, float y, float size, int color
-        ) {
-            p.setColor(color);
+        void text(Canvas c,String s,float x,float y,
+                  int size,int col) {
+            color(col);
             p.setTextSize(size);
             p.setTypeface(Typeface.create(
-                "sans-serif-rounded",
-                Typeface.BOLD
-            ));
+                "sans-serif-rounded",Typeface.BOLD));
             p.setTextAlign(Paint.Align.CENTER);
-            c.drawText(value, x, y, p);
+            c.drawText(s,x,y,p);
         }
 
-        void button(
-            Canvas c, String label,
-            float x, float y, float w, float h,
-            int color
-        ) {
-            p.setColor(color);
-            c.drawRoundRect(
-                new RectF(x, y, x + w, y + h),
-                20, 20, p
-            );
+        void round(Canvas c,float l,float t,float r,float b,
+                   float radius,int col) {
+            color(col);
+            c.drawRoundRect(l,t,r,b,radius,radius,p);
+        }
 
-            text(
-                c, label,
-                x + w / 2,
-                y + h / 2 + 10,
-                25, Color.WHITE
-            );
+        void button(Canvas c,String s,float y,int col) {
+            round(c,65,y,335,y+65,22,0x55000000);
+            round(c,65,y-4,335,y+59,22,col);
+            text(c,s,200,y+37,25,Color.WHITE);
         }
 
         @Override
-        protected void onDraw(Canvas canvas) {
-            super.onDraw(canvas);
+        protected void onDraw(Canvas real) {
+            super.onDraw(real);
 
-            scale = Math.min(
-                getWidth() / 400f,
-                getHeight() / 800f
-            );
+            float scale=Math.min(
+                getWidth()/400f,getHeight()/800f);
 
-            offsetX = (getWidth() - 400 * scale) / 2;
-            offsetY = (getHeight() - 800 * scale) / 2;
+            float dx=(getWidth()-400*scale)/2;
+            float dy=(getHeight()-800*scale)/2;
 
-            canvas.save();
-            canvas.translate(offsetX, offsetY);
-            canvas.scale(scale, scale);
+            real.save();
+            real.translate(dx,dy);
+            real.scale(scale,scale);
 
-            if (state == MENU) {
-                drawMenu(canvas);
-            } else if (state == SHOP) {
-                drawShop(canvas);
-            } else if (state == PLAYING) {
-                updateGame();
-                drawGame(canvas);
+            if(state==MENU) drawMenu(real);
+            if(state==SHOP) drawShop(real);
+
+            if(state==PLAY) {
+                update();
+                drawWorld(real);
                 postInvalidateDelayed(16);
-            } else if (state == GAME_OVER) {
-                drawGame(canvas);
-                drawGameOver(canvas);
             }
 
-            canvas.restore();
-        }
-
-        void drawBackground(Canvas c, int theme) {
-
-            int[] skies = {
-                Color.rgb(25, 40, 85),
-                Color.rgb(55, 35, 100),
-                Color.rgb(20, 80, 100)
-            };
-
-            int[] grounds = {
-                Color.rgb(55, 160, 85),
-                Color.rgb(130, 90, 170),
-                Color.rgb(50, 145, 150)
-            };
-
-            c.drawColor(skies[theme]);
-
-            p.setColor(Color.argb(170, 255, 255, 255));
-
-            for (int i = 0; i < 15; i++) {
-                float x = (i * 83) % 400;
-                float y = (i * 47) % 360;
-                c.drawCircle(x, y, 2, p);
+            if(state==OVER) {
+                drawWorld(real);
+                drawOver(real);
             }
 
-            p.setColor(Color.rgb(255, 220, 100));
-            c.drawCircle(330, 120, 35, p);
-
-            p.setColor(grounds[theme]);
-            c.drawRect(0, ground, 400, 800, p);
-
-            p.setColor(Color.rgb(35, 115, 65));
-            c.drawRect(0, ground, 400, ground + 10, p);
+            real.restore();
         }
 
-        void drawSlime(Canvas c) {
+        // REALISTIC BACKGROUND
 
-            p.setColor(skinColors[selectedSkin]);
+        void background(Canvas c) {
 
-            c.drawRoundRect(
-                new RectF(
-                    slimeX, slimeY,
-                    slimeX + 62, slimeY + 58
-                ),
-                20, 20, p
+            p.setShader(new LinearGradient(
+                0,0,0,800,
+                new int[]{
+                    0xff42b8ed,
+                    0xffa8e3ff,
+                    0xffe0f5ff
+                },
+                null,Shader.TileMode.CLAMP
+            ));
+            c.drawRect(0,0,400,800,p);
+            p.setShader(null);
+
+            // Sun
+            p.setShader(new RadialGradient(
+                325,115,65,
+                new int[]{0xfffff8b0,0x00fff8b0},
+                null,Shader.TileMode.CLAMP
+            ));
+            c.drawCircle(325,115,65,p);
+            p.setShader(null);
+
+            color(Color.WHITE);
+            c.drawCircle(325,115,25,p);
+
+            // Clouds
+            for(int i=0;i<4;i++) {
+                float x=(i*125+30)%440;
+                float y=115+(i%2)*65;
+
+                color(0x99ffffff);
+                c.drawOval(x,y,x+75,y+25,p);
+                c.drawCircle(x+20,y,18,p);
+                c.drawCircle(x+42,y-7,22,p);
+                c.drawCircle(x+60,y+2,16,p);
+            }
+
+            // Mountains
+            Path mountain=new Path();
+            mountain.moveTo(0,430);
+            mountain.lineTo(75,230);
+            mountain.lineTo(145,410);
+            mountain.lineTo(230,255);
+            mountain.lineTo(335,420);
+            mountain.lineTo(400,280);
+            mountain.lineTo(400,650);
+            mountain.lineTo(0,650);
+            mountain.close();
+
+            color(0xff6d9eae);
+            c.drawPath(mountain,p);
+
+            // Mountain snow
+            Path snow=new Path();
+            snow.moveTo(75,230);
+            snow.lineTo(105,315);
+            snow.lineTo(83,300);
+            snow.lineTo(68,320);
+            snow.close();
+
+            color(Color.WHITE);
+            c.drawPath(snow,p);
+
+            // Distant forest
+            for(int i=0;i<12;i++) {
+                float x=i*40;
+                color(0xff397b55);
+                c.drawCircle(x,510,35,p);
+                c.drawRect(x-15,510,x+15,660,p);
+            }
+
+            // Ground
+            p.setShader(new LinearGradient(
+                0,620,0,800,
+                0xff55c95b,0xff24763b,
+                Shader.TileMode.CLAMP
+            ));
+            c.drawRect(0,620,400,800,p);
+            p.setShader(null);
+
+            color(0xffa1e879);
+            c.drawRect(0,620,400,630,p);
+
+            // Small grass
+            color(0xff2b9b43);
+            for(int i=0;i<35;i++) {
+                float x=(i*47)%400;
+                float y=640+(i*17)%150;
+                c.drawLine(x,y,x-4,y-9,p);
+                c.drawLine(x,y,x+5,y-7,p);
+            }
+        }
+
+        // GLOSSY SLIME
+
+        void drawSlime(Canvas c,float x,float y) {
+
+            float bounce=(float)Math.sin(animation)*2;
+
+            // Shadow
+            p.setShader(new RadialGradient(
+                x+32,ground+3,43,
+                new int[]{0x66000000,0x00000000},
+                null,Shader.TileMode.CLAMP
+            ));
+            c.drawOval(x-8,ground-5,x+78,ground+13,p);
+            p.setShader(null);
+
+            // Body gradient
+            p.setShader(new RadialGradient(
+                x+22,y+12,75,
+                new int[]{
+                    0xffffffff,
+                    skins[skin],
+                    darken(skins[skin]),
+                    darken(darken(skins[skin]))
+                },
+                new float[]{0f,0.3f,0.75f,1f},
+                Shader.TileMode.CLAMP
+            ));
+
+            RectF body=new RectF(
+                x,y+bounce,x+68,y+65+bounce
             );
 
-            p.setColor(Color.WHITE);
+            c.drawOval(body,p);
+            p.setShader(null);
 
-            c.drawCircle(slimeX + 19, slimeY + 20, 8, p);
-            c.drawCircle(slimeX + 43, slimeY + 20, 8, p);
+            // Glossy highlight
+            p.setShader(new LinearGradient(
+                x,y,x+40,y+35,
+                0x99ffffff,0x00ffffff,
+                Shader.TileMode.CLAMP
+            ));
+            c.drawOval(
+                x+10,y+5+bounce,
+                x+48,y+26+bounce,p
+            );
+            p.setShader(null);
 
-            p.setColor(Color.BLACK);
+            color(0x55ffffff);
+            c.drawCircle(x+12,y+38+bounce,5,p);
+            c.drawCircle(x+56,y+43+bounce,4,p);
 
-            c.drawCircle(slimeX + 21, slimeY + 20, 3, p);
-            c.drawCircle(slimeX + 45, slimeY + 20, 3, p);
+            // Eyes
+            for(int i=0;i<2;i++) {
+                float ex=x+22+i*26;
+                float ey=y+28+bounce;
 
+                color(Color.WHITE);
+                c.drawOval(
+                    ex-9,ey-13,ex+9,ey+12,p
+                );
+
+                color(0xff14243a);
+                c.drawCircle(ex+2,ey,5,p);
+
+                color(Color.WHITE);
+                c.drawCircle(ex+3,ey-3,2,p);
+            }
+
+            // Smile
             p.setStyle(Paint.Style.STROKE);
-            p.setStrokeWidth(2);
+            p.setStrokeWidth(2.5f);
+            p.setStrokeCap(Paint.Cap.ROUND);
+            color(0xff16452b);
             c.drawArc(
-                slimeX + 19, slimeY + 25,
-                slimeX + 44, slimeY + 45,
-                15, 150, false, p
+                x+23,y+34+bounce,
+                x+46,y+52+bounce,
+                15,150,false,p
             );
             p.setStyle(Paint.Style.FILL);
         }
 
+        int darken(int c) {
+            return Color.rgb(
+                (int)(Color.red(c)*0.55f),
+                (int)(Color.green(c)*0.55f),
+                (int)(Color.blue(c)*0.55f)
+            );
+        }
+
+        // THREE OBSTACLE TYPES
+
         void drawObstacle(Canvas c) {
 
-            p.setColor(Color.rgb(230, 75, 65));
+            if(obstacleType==0) {
 
-            c.drawRoundRect(
-                new RectF(
-                    obstacleX,
-                    ground - obstacleHeight,
-                    obstacleX + obstacleWidth,
-                    ground
-                ),
-                8, 8, p
-            );
+                // Wooden fence
+                round(c,obstacleX,ground-65,
+                    obstacleX+obstacleW,ground,
+                    5,0xff8b4d26);
 
-            p.setColor(Color.rgb(255, 145, 100));
+                round(c,obstacleX-8,ground-65,
+                    obstacleX+obstacleW+8,ground-52,
+                    4,0xffbd793c);
 
-            c.drawRect(
-                obstacleX + 8,
-                ground - obstacleHeight + 10,
-                obstacleX + 15,
-                ground - 15,
-                p
-            );
+                round(c,obstacleX-8,ground-29,
+                    obstacleX+obstacleW+8,ground-16,
+                    4,0xffbd793c);
+
+                color(0xffe6b078);
+                c.drawLine(obstacleX+12,ground-60,
+                    obstacleX+12,ground-5,p);
+            }
+            else if(obstacleType==1) {
+
+                // Stone wall
+                round(c,obstacleX,ground-80,
+                    obstacleX+obstacleW,ground,
+                    7,0xff777d83);
+
+                color(0xffaeb7bd);
+                c.drawLine(obstacleX,ground-55,
+                    obstacleX+obstacleW,ground-55,p);
+
+                c.drawLine(obstacleX+25,ground-80,
+                    obstacleX+25,ground-55,p);
+
+                c.drawLine(obstacleX+38,ground-55,
+                    obstacleX+38,ground,p);
+            }
+            else {
+
+                // Spiked barrier
+                round(c,obstacleX,ground-25,
+                    obstacleX+obstacleW,ground,
+                    5,0xff343b48);
+
+                for(int i=0;i<3;i++) {
+                    float x=obstacleX+10+i*23;
+
+                    Path spike=new Path();
+                    spike.moveTo(x,ground-23);
+                    spike.lineTo(x+10,ground-78);
+                    spike.lineTo(x+20,ground-23);
+                    spike.close();
+
+                    color(0xffc4d0da);
+                    c.drawPath(spike,p);
+                }
+            }
         }
 
         void drawCoin(Canvas c) {
+            p.setShader(new RadialGradient(
+                coinX-5,coinY-6,24,
+                new int[]{
+                    0xfffffffd,
+                    0xffffe34a,
+                    0xffd58a00
+                },
+                null,Shader.TileMode.CLAMP
+            ));
+            c.drawCircle(coinX,coinY,16,p);
+            p.setShader(null);
 
-            p.setColor(Color.rgb(255, 190, 20));
-            c.drawCircle(coinX, coinY, 17, p);
-
-            p.setColor(Color.rgb(255, 240, 100));
-            c.drawCircle(coinX, coinY, 11, p);
-
-            text(c, "$", coinX, coinY + 7, 19,
-                Color.rgb(170, 105, 0));
+            color(0xfffff4a0);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(2);
+            c.drawCircle(coinX,coinY,11,p);
+            p.setStyle(Paint.Style.FILL);
         }
 
-        void startGame() {
-
-            score = 0;
-            slimeY = ground - 58;
-            velocity = 0;
-
-            obstacleX = 450;
-            obstacleSpeed = 8;
-
-            coinX = 650;
-            coinY = ground - 115;
-
-            jumping = false;
-            state = PLAYING;
-
-            lastTime = System.currentTimeMillis();
-
+        void reset() {
+            score=0;
+            slimeY=ground-65;
+            velocity=0;
+            obstacleX=500;
+            coinX=750;
+            speed=7;
+            obstacleType=random.nextInt(3);
+            jumping=false;
+            state=PLAY;
+            last=System.currentTimeMillis();
             invalidate();
         }
 
-        void updateGame() {
+        void update() {
 
-            long now = System.currentTimeMillis();
+            long now=System.currentTimeMillis();
+            float dt=Math.min((now-last)/16.67f,2);
+            last=now;
 
-            float dt = Math.min(
-                (now - lastTime) / 16.67f, 2f
-            );
+            animation+=0.12f*dt;
 
-            lastTime = now;
+            velocity+=0.8f*dt;
+            slimeY+=velocity*dt;
 
-            velocity += 0.8f * dt;
-            slimeY += velocity * dt;
-
-            if (slimeY >= ground - 58) {
-                slimeY = ground - 58;
-                velocity = 0;
-                jumping = false;
+            if(slimeY>=ground-65) {
+                slimeY=ground-65;
+                velocity=0;
+                jumping=false;
             }
 
-            obstacleSpeed = Math.min(
-                8 + score / 500f,
-                17
-            );
+            obstacleX-=speed*dt;
+            coinX-=speed*dt;
 
-            obstacleX -= obstacleSpeed * dt;
-            coinX -= obstacleSpeed * dt;
-
-            if (obstacleX < -obstacleWidth) {
-                obstacleX = 430 + random.nextInt(150);
-                obstacleHeight = 55 + random.nextInt(35);
-                score += 10;
+            if(obstacleX < -100) {
+                obstacleX=460+random.nextInt(160);
+                obstacleType=random.nextInt(3);
+                score+=100;
+                speed=Math.min(speed+0.2f,14);
             }
 
-            if (coinX < -30) {
-                coinX = 450 + random.nextInt(250);
-                coinY = ground - 100 - random.nextInt(60);
+            if(coinX < -30) {
+                coinX=480+random.nextInt(180);
+                coinY=ground-90-random.nextInt(100);
             }
 
-            RectF slime = new RectF(
-                slimeX + 5, slimeY + 5,
-                slimeX + 57, slimeY + 55
+            RectF player=new RectF(
+                slimeX+7,slimeY+8,
+                slimeX+61,slimeY+60
             );
 
-            RectF obstacle = new RectF(
-                obstacleX, ground - obstacleHeight,
-                obstacleX + obstacleWidth, ground
+            float oh=obstacleType==0?65:
+                     obstacleType==1?80:78;
+
+            RectF obstacle=new RectF(
+                obstacleX,ground-oh,
+                obstacleX+obstacleW,ground
             );
 
-            if (RectF.intersects(slime, obstacle)) {
-
-                state = GAME_OVER;
-
-                if (score > bestScore) {
-                    bestScore = score;
-                }
-
-                save();
-                playSound(ToneGenerator.TONE_PROP_NACK);
-
+            if(RectF.intersects(player,obstacle)) {
+                state=OVER;
+                best=Math.max(best,score);
+                saveData();
+                if(soundOn) sound.startTone(
+                    ToneGenerator.TONE_PROP_NACK,180);
                 return;
             }
 
-            RectF coin = new RectF(
-                coinX - 16, coinY - 16,
-                coinX + 16, coinY + 16
+            RectF coin=new RectF(
+                coinX-16,coinY-16,
+                coinX+16,coinY+16
             );
 
-            if (RectF.intersects(slime, coin)) {
+            if(RectF.intersects(player,coin)) {
+                coins+=10;
+                score+=25;
+                coinX=480+random.nextInt(200);
+                coinY=ground-90-random.nextInt(100);
+                saveData();
 
-                coins += 10;
-                score += 25;
-
-                coinX = 450 + random.nextInt(250);
-                coinY = ground - 100 - random.nextInt(60);
-
-                save();
-
-                playSound(ToneGenerator.TONE_PROP_BEEP);
+                if(soundOn) sound.startTone(
+                    ToneGenerator.TONE_PROP_BEEP,100);
             }
 
             score++;
         }
 
-        void drawGame(Canvas c) {
-
-            int theme = (score / 1500) % 3;
-
-            drawBackground(c, theme);
+        void drawWorld(Canvas c) {
+            background(c);
             drawObstacle(c);
             drawCoin(c);
-            drawSlime(c);
+            drawSlime(c,slimeX,slimeY);
 
-            text(c, "SCORE: " + score / 10,
-                90, 55, 23, Color.WHITE);
+            round(c,12,12,388,75,18,0xaa173c65);
 
-            text(c, "BEST: " + bestScore / 10,
-                290, 55, 20, Color.WHITE);
+            text(c,"SCORE: "+score/10,
+                95,49,21,Color.WHITE);
 
-            p.setColor(Color.rgb(255, 205, 35));
-            c.drawCircle(155, 90, 12, p);
+            text(c,"BEST: "+best/10,
+                210,49,20,Color.WHITE);
 
-            text(c, "" + coins,
-                195, 98, 22, Color.WHITE);
+            text(c,"● "+coins,
+                325,49,20,0xffffdf59);
 
-            text(c, "TAP TO JUMP",
-                200, 760, 19, Color.WHITE);
+            text(c,"TAP TO JUMP",
+                200,765,19,Color.WHITE);
         }
 
         void drawMenu(Canvas c) {
+            background(c);
 
-            ground = 690;
+            text(c,"SLIME RUSH",
+                200,190,45,Color.WHITE);
 
-            drawBackground(c, 0);
+            text(c,"THE GELLY ADVENTURE",
+                200,230,17,0xffeaffff);
 
-            text(c, "SLIME RUSH",
-                200, 220, 48, Color.WHITE);
+            drawSlime(c,166,320);
 
-            text(c, "ENDLESS ADVENTURE",
-                200, 265, 19, Color.rgb(170, 220, 255));
+            button(c,"PLAY",460,0xff22ae65);
+            button(c,"SKINS",545,0xff367fd1);
 
-            slimeX = 169;
-            slimeY = 380;
+            text(c,"BEST: "+best/10,
+                200,680,23,Color.WHITE);
 
-            drawSlime(c);
-
-            button(c, "PLAY",
-                75, 470, 250, 75,
-                Color.rgb(45, 180, 85));
-
-            button(c, "SHOP",
-                75, 565, 250, 70,
-                Color.rgb(70, 115, 220));
-
-            text(c, "BEST: " + bestScore / 10,
-                200, 680, 23, Color.WHITE);
-
-            text(c, "COINS: " + coins,
-                200, 720, 23, Color.rgb(255, 220, 60));
+            text(c,"COINS: "+coins,
+                200,720,23,0xffffdf59);
         }
 
         void drawShop(Canvas c) {
+            background(c);
 
-            drawBackground(c, 1);
+            text(c,"SLIME SKINS",
+                200,90,35,Color.WHITE);
 
-            text(c, "SLIME SHOP",
-                200, 100, 40, Color.WHITE);
+            text(c,"COINS: "+coins,
+                200,135,23,0xffffdf59);
 
-            text(c, "YOUR COINS: " + coins,
-                200, 150, 23, Color.rgb(255, 225, 70));
+            for(int i=0;i<5;i++) {
+                float y=175+i*105;
 
-            for (int i = 0; i < 4; i++) {
+                round(c,25,y,375,y+85,
+                    15,0xdd183e60);
 
-                float y = 205 + i * 115;
+                color(skins[i]);
+                c.drawOval(42,y+12,102,y+72,p);
 
-                p.setColor(Color.rgb(35, 50, 90));
+                color(Color.WHITE);
+                c.drawCircle(61,y+35,5,p);
+                c.drawCircle(83,y+35,5,p);
 
-                c.drawRoundRect(
-                    new RectF(25, y, 375, y + 95),
-                    15, 15, p
-                );
-
-                p.setColor(skinColors[i]);
-
-                c.drawRoundRect(
-                    new RectF(45, y + 20, 100, y + 75),
-                    15, 15, p
-                );
-
-                text(c, skinNames[i],
-                    205, y + 35, 19, Color.WHITE);
+                text(c,skinNames[i],
+                    235,y+35,17,Color.WHITE);
 
                 String action;
 
-                if (selectedSkin == i) {
-                    action = "EQUIPPED";
-                } else if (owned[i]) {
-                    action = "SELECT";
-                } else {
-                    action = prices[i] + " COINS";
-                }
+                if(skin==i) action="EQUIPPED";
+                else if(owned[i]) action="SELECT";
+                else action="BUY "+prices[i];
 
-                text(c, action,
-                    205, y + 70, 17,
-                    Color.rgb(255, 220, 80));
+                text(c,action,
+                    235,y+65,17,0xffffdf59);
             }
 
-            button(c, "BACK",
-                120, 680, 160, 65,
-                Color.rgb(80, 95, 130));
+            button(c,"BACK",720,0xff367fd1);
         }
 
-        void drawGameOver(Canvas c) {
+        void drawOver(Canvas c) {
+            color(0xbb10243c);
+            c.drawRect(0,0,400,800,p);
 
-            p.setColor(Color.argb(205, 0, 0, 0));
-            c.drawRect(0, 0, 400, 800, p);
+            text(c,"GAME OVER",
+                200,300,42,Color.WHITE);
 
-            text(c, "GAME OVER",
-                200, 300, 43, Color.WHITE);
+            text(c,"SCORE: "+score/10,
+                200,365,27,Color.WHITE);
 
-            text(c, "SCORE: " + score / 10,
-                200, 365, 28, Color.WHITE);
+            text(c,"BEST: "+best/10,
+                200,410,24,0xffffdf59);
 
-            text(c, "BEST: " + bestScore / 10,
-                200, 410, 25, Color.rgb(255, 220, 70));
-
-            button(c, "RESTART",
-                75, 480, 250, 70,
-                Color.rgb(45, 180, 85));
-
-            button(c, "MAIN MENU",
-                75, 575, 250, 70,
-                Color.rgb(70, 115, 220));
+            button(c,"RESTART",485,0xff22ae65);
+            button(c,"MAIN MENU",570,0xff367fd1);
         }
 
         @Override
-        public boolean onTouchEvent(MotionEvent event) {
+        public boolean onTouchEvent(MotionEvent e) {
 
-            if (event.getAction() != MotionEvent.ACTION_DOWN) {
+            if(e.getAction()!=MotionEvent.ACTION_DOWN)
                 return true;
-            }
 
-            float x = (event.getX() - offsetX) / scale;
-            float y = (event.getY() - offsetY) / scale;
+            float scale=Math.min(
+                getWidth()/400f,getHeight()/800f);
 
-            if (state == MENU) {
+            float dx=(getWidth()-400*scale)/2;
+            float dy=(getHeight()-800*scale)/2;
 
-                if (y >= 470 && y <= 545) {
-                    startGame();
-                } else if (y >= 565 && y <= 635) {
-                    state = SHOP;
+            float x=(e.getX()-dx)/scale;
+            float y=(e.getY()-dy)/scale;
+
+            if(state==MENU) {
+
+                if(y>=450 && y<=525) reset();
+                else if(y>=535 && y<=610) {
+                    state=SHOP;
                     invalidate();
                 }
 
-            } else if (state == SHOP) {
+            } else if(state==SHOP) {
 
-                if (y >= 680) {
-                    state = MENU;
+                if(y>=700) {
+                    state=MENU;
                 } else {
+                    int i=(int)((y-175)/105);
 
-                    int index = (int)((y - 205) / 115);
-
-                    if (index >= 0 && index < 4) {
-
-                        if (owned[index]) {
-
-                            selectedSkin = index;
-
-                        } else if (coins >= prices[index]) {
-
-                            coins -= prices[index];
-                            owned[index] = true;
-                            selectedSkin = index;
-
-                            playSound(
-                                ToneGenerator.TONE_PROP_ACK
-                            );
+                    if(i>=0 && i<5) {
+                        if(owned[i]) {
+                            skin=i;
+                        } else if(coins>=prices[i]) {
+                            coins-=prices[i];
+                            owned[i]=true;
+                            skin=i;
                         }
-
-                        save();
+                        saveData();
                     }
                 }
 
                 invalidate();
 
-            } else if (state == PLAYING) {
+            } else if(state==PLAY) {
 
-                if (!jumping) {
-                    velocity = -17;
-                    jumping = true;
+                if(!jumping) {
+                    velocity=-18;
+                    jumping=true;
 
-                    playSound(
-                        ToneGenerator.TONE_PROP_BEEP
-                    );
+                    if(soundOn) sound.startTone(
+                        ToneGenerator.TONE_PROP_BEEP,100);
                 }
 
-            } else if (state == GAME_OVER) {
+            } else if(state==OVER) {
 
-                if (y >= 480 && y <= 550) {
-                    startGame();
-                } else if (y >= 575 && y <= 645) {
-                    state = MENU;
+                if(y>=470 && y<=550) reset();
+                else if(y>=555 && y<=640) {
+                    state=MENU;
                     invalidate();
                 }
             }
@@ -610,5 +668,5 @@ public class MainActivity extends Activity {
             return true;
         }
     }
-        }
+                             }
                 
