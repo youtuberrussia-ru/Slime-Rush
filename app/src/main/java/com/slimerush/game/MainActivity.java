@@ -795,8 +795,7 @@ public class MainActivity extends Activity {
                 0,12,0,75,
                 0xdd132c3c,
                 0x99203940,
-                Shader.TileMode.CLAMP
-  
+                
                 Shader.TileMode.CLAMP
             ));
 
@@ -1018,5 +1017,5 @@ public class MainActivity extends Activity {
     private boolean soundViewExists() {
         return true;
     }
-                 }
-                    
+    }
+                        
