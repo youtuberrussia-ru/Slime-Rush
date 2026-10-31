@@ -13,37 +13,15 @@ import java.util.Random;
 
 public class MainActivity extends Activity {
 
-    private BachMusic music;
-
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+
         getWindow().getDecorView().setSystemUiVisibility(
             5894 | 1024 | 512
         );
 
-        music = new BachMusic();
-        music.start();
-
         setContentView(new GameView());
-    }
-
-    @Override
-    protected void onPause() {
-        if (music != null) music.stop();
-        super.onPause();
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        if (music != null) music.start();
-    }
-
-    @Override
-    protected void onDestroy() {
-        if (music != null) music.stop();
-        super.onDestroy();
     }
 
     class GameView extends View {
@@ -102,6 +80,9 @@ public class MainActivity extends Activity {
             for(int i=0;i<5;i++)
                 owned[i]=save.getBoolean("owned"+i,i==0);
 
+            if(skin<0 || skin>=5 || !owned[skin])
+                skin=0;
+
             sound=new ToneGenerator(
                 AudioManager.STREAM_MUSIC,65
             );
@@ -147,12 +128,6 @@ public class MainActivity extends Activity {
             c.drawRoundRect(l,t,r,b,radius,radius,p);
         }
 
-        void button(Canvas c,String s,float y,int col) {
-            round(c,65,y,335,y+65,22,0x66000000);
-            round(c,65,y-4,335,y+59,22,col);
-            text(c,s,200,y+37,25,Color.WHITE);
-        }
-
         @Override
         protected void onDraw(Canvas real) {
             super.onDraw(real);
@@ -185,7 +160,7 @@ public class MainActivity extends Activity {
             real.restore();
         }
 
-        // 2.5D ENVIRONMENT
+        // BACKGROUND
 
         void background(Canvas c) {
 
@@ -203,7 +178,6 @@ public class MainActivity extends Activity {
             c.drawRect(0,0,400,800,p);
             p.setShader(null);
 
-            // Sun glow
             p.setShader(new RadialGradient(
                 315,120,110,
                 new int[]{
@@ -220,7 +194,6 @@ public class MainActivity extends Activity {
             color(0xffffedbd);
             c.drawCircle(315,120,27,p);
 
-            // Distant mountains
             Path mountain=new Path();
 
             mountain.moveTo(0,430);
@@ -244,7 +217,6 @@ public class MainActivity extends Activity {
             c.drawPath(mountain,p);
             p.setShader(null);
 
-            // Mountain highlights
             Path light=new Path();
 
             light.moveTo(195,245);
@@ -256,7 +228,6 @@ public class MainActivity extends Activity {
             color(0xffdce4dc);
             c.drawPath(light,p);
 
-            // Far forest
             for(int i=0;i<16;i++) {
                 float x=i*30-sceneryOffset*0.12f%30;
 
@@ -272,7 +243,6 @@ public class MainActivity extends Activity {
                 c.drawRect(x+15,500,x+21,650,p);
             }
 
-            // Near forest
             for(int i=0;i<11;i++) {
                 float x=i*48-sceneryOffset*0.3f%48;
 
@@ -288,7 +258,6 @@ public class MainActivity extends Activity {
                 c.drawRect(x+20,560,x+28,650,p);
             }
 
-            // Ground shadow
             p.setShader(new LinearGradient(
                 0,615,0,800,
                 new int[]{
@@ -302,7 +271,6 @@ public class MainActivity extends Activity {
             c.drawRect(0,615,400,800,p);
             p.setShader(null);
 
-            // Ground surface
             p.setShader(new LinearGradient(
                 0,620,0,800,
                 0xff9a9160,
@@ -313,11 +281,9 @@ public class MainActivity extends Activity {
             c.drawRect(0,630,400,800,p);
             p.setShader(null);
 
-            // Ground edge
             color(0xff647d43);
             c.drawRect(0,620,400,635,p);
 
-            // Ground texture
             for(int i=0;i<70;i++) {
                 float x=(i*71-sceneryOffset)%430;
                 if(x<0) x+=430;
@@ -330,7 +296,6 @@ public class MainActivity extends Activity {
                 c.drawCircle(x,y,1+(i%3),p);
             }
 
-            // Grass details
             p.setStyle(Paint.Style.STROKE);
             p.setStrokeWidth(2);
 
@@ -350,13 +315,13 @@ public class MainActivity extends Activity {
             p.setStyle(Paint.Style.FILL);
         }
 
-        // VOLUMETRIC SLIME
+        // SLIME
 
         void drawSlime(Canvas c,float x,float y) {
 
             float bounce=(float)Math.sin(animation*2)*2;
 
-            float squash=1f;
+            float squash;
 
             if(jumping) {
                 squash=0.91f;
@@ -365,7 +330,6 @@ public class MainActivity extends Activity {
                     (float)Math.sin(animation*2)*0.025f;
             }
 
-            // Ground shadow
             p.setShader(new RadialGradient(
                 x+34,ground+4,48,
                 new int[]{
@@ -389,7 +353,6 @@ public class MainActivity extends Activity {
             c.scale(1f/squash,squash);
             c.translate(-x-34,-y-32-bounce);
 
-            // Outer dark edge
             p.setShader(new RadialGradient(
                 x+22,y+15,75,
                 new int[]{
@@ -410,7 +373,6 @@ public class MainActivity extends Activity {
             c.drawOval(body,p);
             p.setShader(null);
 
-            // Inner light
             p.setShader(new RadialGradient(
                 x+23,y+14,39,
                 new int[]{
@@ -428,7 +390,6 @@ public class MainActivity extends Activity {
 
             p.setShader(null);
 
-            // Gloss reflection
             p.setShader(new LinearGradient(
                 x+10,y+3,
                 x+45,y+37,
@@ -447,7 +408,6 @@ public class MainActivity extends Activity {
 
             p.setShader(null);
 
-            // Small reflections
             color(0x99ffffff);
             c.drawOval(
                 x+13,y+13+bounce,
@@ -459,7 +419,6 @@ public class MainActivity extends Activity {
                 x+54,y+42+bounce,4,p
             );
 
-            // Eyes
             for(int i=0;i<2;i++) {
 
                 float ex=x+22+i*26;
@@ -484,7 +443,6 @@ public class MainActivity extends Activity {
                 c.drawCircle(ex+3,ey-3,2,p);
             }
 
-            // Smile
             p.setStyle(Paint.Style.STROKE);
             p.setStrokeWidth(2.5f);
             p.setStrokeCap(Paint.Cap.ROUND);
@@ -510,11 +468,10 @@ public class MainActivity extends Activity {
             );
         }
 
-        // DETAILED OBSTACLES
+        // OBSTACLES
 
         void drawObstacle(Canvas c) {
 
-            // Shadow
             p.setShader(new RadialGradient(
                 obstacleX+32,ground,55,
                 new int[]{
@@ -533,7 +490,6 @@ public class MainActivity extends Activity {
 
             if(obstacleType==0) {
 
-                // Wood body
                 p.setShader(new LinearGradient(
                     obstacleX,0,
                     obstacleX+obstacleW,0,
@@ -553,7 +509,6 @@ public class MainActivity extends Activity {
 
                 p.setShader(null);
 
-                // Wood boards
                 for(int i=0;i<4;i++) {
                     float x=obstacleX+8+i*15;
 
@@ -585,7 +540,6 @@ public class MainActivity extends Activity {
 
             } else if(obstacleType==1) {
 
-                // Stone wall
                 p.setShader(new LinearGradient(
                     obstacleX,ground-80,
                     obstacleX+obstacleW,ground,
@@ -605,7 +559,6 @@ public class MainActivity extends Activity {
 
                 p.setShader(null);
 
-                // Stone lines
                 p.setStyle(Paint.Style.STROKE);
                 p.setStrokeWidth(2);
 
@@ -636,7 +589,6 @@ public class MainActivity extends Activity {
 
             } else {
 
-                // Metal base
                 p.setShader(new LinearGradient(
                     obstacleX,ground-25,
                     obstacleX,ground,
@@ -653,7 +605,6 @@ public class MainActivity extends Activity {
 
                 p.setShader(null);
 
-                // Metal spikes
                 for(int i=0;i<3;i++) {
 
                     float x=obstacleX+8+i*23;
@@ -679,9 +630,10 @@ public class MainActivity extends Activity {
             }
         }
 
+        // COIN
+
         void drawCoin(Canvas c) {
 
-            // Coin glow
             p.setShader(new RadialGradient(
                 coinX,coinY,30,
                 new int[]{
@@ -694,7 +646,6 @@ public class MainActivity extends Activity {
             c.drawCircle(coinX,coinY,30,p);
             p.setShader(null);
 
-            // Gold body
             p.setShader(new RadialGradient(
                 coinX-5,coinY-6,24,
                 new int[]{
@@ -725,6 +676,7 @@ public class MainActivity extends Activity {
 
             obstacleX=500;
             coinX=750;
+            coinY=540;
 
             speed=7;
             obstacleType=random.nextInt(3);
@@ -783,9 +735,13 @@ public class MainActivity extends Activity {
             float oh=obstacleType==0?65:
                      obstacleType==1?80:78;
 
+            // FIXED RECTF CONSTRUCTOR
+
             RectF obstacle=new RectF(
-                obstacleX,ground-
-                obstacleX+65,ground
+                obstacleX,
+                ground-oh,
+                obstacleX+obstacleW,
+                ground
             );
 
             if(RectF.intersects(player,obstacle)) {
@@ -825,6 +781,8 @@ public class MainActivity extends Activity {
             score++;
         }
 
+        // WORLD
+
         void drawWorld(Canvas c) {
 
             background(c);
@@ -837,6 +795,8 @@ public class MainActivity extends Activity {
                 0,12,0,75,
                 0xdd132c3c,
                 0x99203940,
+                Shader.TileMode.CLAMP
+  
                 Shader.TileMode.CLAMP
             ));
 
@@ -859,6 +819,8 @@ public class MainActivity extends Activity {
                 200,765,19,Color.WHITE);
         }
 
+        // MENU
+
         void drawMenu(Canvas c) {
 
             background(c);
@@ -880,6 +842,8 @@ public class MainActivity extends Activity {
             text(c,"COINS: "+coins,
                 200,720,23,0xffffdf59);
         }
+
+        // SHOP
 
         void drawShop(Canvas c) {
 
@@ -936,6 +900,8 @@ public class MainActivity extends Activity {
             button(c,"BACK",720,0xff367fd1);
         }
 
+        // GAME OVER
+
         void drawOver(Canvas c) {
 
             color(0xbb10243c);
@@ -953,6 +919,16 @@ public class MainActivity extends Activity {
             button(c,"RESTART",485,0xff22ae65);
             button(c,"MAIN MENU",570,0xff367fd1);
         }
+
+        // BUTTON
+
+        void button(Canvas c,String s,float y,int col) {
+            round(c,65,y,335,y+65,22,0x66000000);
+            round(c,65,y-4,335,y+59,22,col);
+            text(c,s,200,y+37,25,Color.WHITE);
+        }
+
+        // TOUCH
 
         @Override
         public boolean onTouchEvent(MotionEvent e) {
@@ -1030,4 +1006,17 @@ public class MainActivity extends Activity {
             return true;
         }
     }
+
+    @Override
+    protected void onDestroy() {
+        if(soundViewExists()) {
+            // Game sound is released by Android on activity destruction
+        }
+        super.onDestroy();
+    }
+
+    private boolean soundViewExists() {
+        return true;
+    }
                  }
+                    
