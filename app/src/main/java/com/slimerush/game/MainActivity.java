@@ -785,3 +785,249 @@ public class MainActivity extends Activity {
 
             RectF obstacle=new RectF(
                 obstacleX,ground-
+                obstacleX+65,ground
+            );
+
+            if(RectF.intersects(player,obstacle)) {
+
+                state=OVER;
+                best=Math.max(best,score);
+
+                saveData();
+
+                if(soundOn) sound.startTone(
+                    ToneGenerator.TONE_PROP_NACK,180
+                );
+
+                return;
+            }
+
+            RectF coin=new RectF(
+                coinX-16,coinY-16,
+                coinX+16,coinY+16
+            );
+
+            if(RectF.intersects(player,coin)) {
+
+                coins+=10;
+                score+=25;
+
+                coinX=480+random.nextInt(200);
+                coinY=ground-90-random.nextInt(100);
+
+                saveData();
+
+                if(soundOn) sound.startTone(
+                    ToneGenerator.TONE_PROP_BEEP,100
+                );
+            }
+
+            score++;
+        }
+
+        void drawWorld(Canvas c) {
+
+            background(c);
+
+            drawObstacle(c);
+            drawCoin(c);
+            drawSlime(c,slimeX,slimeY);
+
+            p.setShader(new LinearGradient(
+                0,12,0,75,
+                0xdd132c3c,
+                0x99203940,
+                Shader.TileMode.CLAMP
+            ));
+
+            c.drawRoundRect(
+                12,12,388,75,18,18,p
+            );
+
+            p.setShader(null);
+
+            text(c,"SCORE: "+score/10,
+                95,49,21,Color.WHITE);
+
+            text(c,"BEST: "+best/10,
+                210,49,20,Color.WHITE);
+
+            text(c,"● "+coins,
+                325,49,20,0xffffdf59);
+
+            text(c,"TAP TO JUMP",
+                200,765,19,Color.WHITE);
+        }
+
+        void drawMenu(Canvas c) {
+
+            background(c);
+
+            text(c,"SLIME RUSH",
+                200,190,45,Color.WHITE);
+
+            text(c,"THE GELLY ADVENTURE",
+                200,230,17,0xffeaffff);
+
+            drawSlime(c,166,320);
+
+            button(c,"PLAY",460,0xff22ae65);
+            button(c,"SKINS",545,0xff367fd1);
+
+            text(c,"BEST: "+best/10,
+                200,680,23,Color.WHITE);
+
+            text(c,"COINS: "+coins,
+                200,720,23,0xffffdf59);
+        }
+
+        void drawShop(Canvas c) {
+
+            background(c);
+
+            text(c,"SLIME SKINS",
+                200,90,35,Color.WHITE);
+
+            text(c,"COINS: "+coins,
+                200,135,23,0xffffdf59);
+
+            for(int i=0;i<5;i++) {
+
+                float y=175+i*105;
+
+                round(
+                    c,25,y,375,y+85,
+                    15,0xdd183e60
+                );
+
+                p.setShader(new RadialGradient(
+                    58,y+35,35,
+                    new int[]{
+                        Color.WHITE,
+                        skins[i],
+                        darken(skins[i])
+                    },
+                    null,Shader.TileMode.CLAMP
+                ));
+
+                c.drawOval(
+                    42,y+12,102,y+72,p
+                );
+
+                p.setShader(null);
+
+                color(Color.WHITE);
+                c.drawCircle(61,y+35,5,p);
+                c.drawCircle(83,y+35,5,p);
+
+                text(c,skinNames[i],
+                    235,y+35,17,Color.WHITE);
+
+                String action;
+
+                if(skin==i) action="EQUIPPED";
+                else if(owned[i]) action="SELECT";
+                else action="BUY "+prices[i];
+
+                text(c,action,
+                    235,y+65,17,0xffffdf59);
+            }
+
+            button(c,"BACK",720,0xff367fd1);
+        }
+
+        void drawOver(Canvas c) {
+
+            color(0xbb10243c);
+            c.drawRect(0,0,400,800,p);
+
+            text(c,"GAME OVER",
+                200,300,42,Color.WHITE);
+
+            text(c,"SCORE: "+score/10,
+                200,365,27,Color.WHITE);
+
+            text(c,"BEST: "+best/10,
+                200,410,24,0xffffdf59);
+
+            button(c,"RESTART",485,0xff22ae65);
+            button(c,"MAIN MENU",570,0xff367fd1);
+        }
+
+        @Override
+        public boolean onTouchEvent(MotionEvent e) {
+
+            if(e.getAction()!=MotionEvent.ACTION_DOWN)
+                return true;
+
+            float scale=Math.min(
+                getWidth()/400f,getHeight()/800f
+            );
+
+            float dx=(getWidth()-400*scale)/2;
+            float dy=(getHeight()-800*scale)/2;
+
+            float x=(e.getX()-dx)/scale;
+            float y=(e.getY()-dy)/scale;
+
+            if(state==MENU) {
+
+                if(y>=450 && y<=525) {
+                    reset();
+                }
+                else if(y>=535 && y<=610) {
+                    state=SHOP;
+                    invalidate();
+                }
+
+            } else if(state==SHOP) {
+
+                if(y>=700) {
+                    state=MENU;
+                } else {
+
+                    int i=(int)((y-175)/105);
+
+                    if(i>=0 && i<5) {
+
+                        if(owned[i]) {
+                            skin=i;
+                        }
+                        else if(coins>=prices[i]) {
+                            coins-=prices[i];
+                            owned[i]=true;
+                            skin=i;
+                        }
+
+                        saveData();
+                    }
+                }
+
+                invalidate();
+
+            } else if(state==PLAY) {
+
+                if(!jumping) {
+                    velocity=-18;
+                    jumping=true;
+
+                    if(soundOn) sound.startTone(
+                        ToneGenerator.TONE_PROP_BEEP,100
+                    );
+                }
+
+            } else if(state==OVER) {
+
+                if(y>=470 && y<=550) {
+                    reset();
+                }
+                else if(y>=555 && y<=640) {
+                    state=MENU;
+                    invalidate();
+                }
+            }
+
+            return true;
+        }
+    }
+                 }
