@@ -1691,3 +1691,601 @@ public class MainActivity extends Activity {
                 }
             }
                            }
+        // ================= ИГРОВАЯ ЛОГИКА =================
+        private void resetRun() {
+            score = 0;
+            scoreAcc = 0;
+            coinsRun = 0;
+            slimeY = ground - 65;
+            velocity = 0;
+            obstacleX = 500;
+            coinX = 750;
+            coinY = 540;
+            speed = levelStart[level];
+            pickObstacle();
+            jumping = false;
+            shake = 0;
+            newUnlock = false;
+            newBest = false;
+            for (int i = 0; i < particleLife.length; i++) particleLife[i] = 0;
+            lastFrame = System.currentTimeMillis();
+        }
+
+        private void startGame() {
+            resetRun();
+            state = PLAY;
+            lastFrame = System.currentTimeMillis();
+            invalidate();
+        }
+
+        private void updateGame() {
+            long now = System.currentTimeMillis();
+            float dt = Math.min(Math.max((now - lastFrame) / 16.67f, 0.4f), 2f);
+            lastFrame = now;
+
+            animation += 0.12f * dt;
+            sceneryOffset += speed * dt;
+            updateParticles(dt);
+            updateWeather(dt);
+
+            velocity += 0.78f * dt;
+            slimeY += velocity * dt;
+            if (slimeY >= ground - 65) {
+                if (jumping) spawnParticles(slimeX + 34, ground - 4, 6, 0xffd9c9a0);
+                slimeY = ground - 65;
+                velocity = 0;
+                jumping = false;
+            }
+
+            obstacleX -= speed * dt;
+            coinX -= speed * dt;
+
+            if (obstacleX < -110) {
+                obstacleX = 460 + random.nextInt(160);
+                pickObstacle();
+                score += 100;
+                speed = Math.min(speed + 0.18f, levelMax[level]);
+            }
+            if (coinX < -30) {
+                coinX = 480 + random.nextInt(180);
+                coinY = ground - 90 - random.nextInt(100);
+            }
+
+            RectF player = new RectF(slimeX + 7, slimeY + 8, slimeX + 61, slimeY + 60);
+            if (RectF.intersects(player, obstacleRect())) {
+                state = OVER;
+                shake = 18;
+                int old = bestL[level];
+                newBest = score > old;
+                if (newBest) bestL[level] = score;
+                newUnlock = level < NLEV - 1
+                        && old < levelNeed[level + 1] && score >= levelNeed[level + 1];
+                saveData();
+                playTone(ToneGenerator.TONE_PROP_NACK, 300);
+                return;
+            }
+
+            RectF coin = new RectF(coinX - 17, coinY - 17, coinX + 17, coinY + 17);
+            if (RectF.intersects(player, coin)) {
+                int gain = 1 + level;
+                coins += gain;
+                coinsRun += gain;
+                score += 25;
+                spawnParticles(coinX, coinY, 12, 0xffffe34a);
+                playTone(ToneGenerator.TONE_PROP_ACK, 100);
+                coinX = 500 + random.nextInt(220);
+                coinY = ground - 90 - random.nextInt(100);
+                saveData();
+            }
+
+            scoreAcc += dt * 2;
+            int add = (int) scoreAcc;
+            score += add;
+            scoreAcc -= add;
+
+            if (shake > 0) shake *= 0.82f;
+        }
+
+        private void jump() {
+            if (state != PLAY || jumping) return;
+            velocity = -17.5f;
+            jumping = true;
+            spawnParticles(slimeX + 34, ground - 5, 6, 0xffd9c9a0);
+            playTone(ToneGenerator.TONE_PROP_BEEP, 70);
+        }
+
+        private void drawWorld(Canvas c) {
+            c.save();
+            if (shake > 1 && state != PAUSE) {
+                c.translate((random.nextFloat() - 0.5f) * shake,
+                        (random.nextFloat() - 0.5f) * shake);
+            }
+
+            drawBackground(c);
+            drawFireflies(c);
+            drawCoin(c);
+            drawObstacle(c);
+            drawSlime(c, slimeX, slimeY, ground);
+            drawParticles(c);
+            drawBlades(c, 13, 670, 22, 1.0f, grassB[level], grassA[level], 17);
+            drawWeather(c);
+
+            c.restore();
+            drawHud(c);
+        }
+
+        private void hudChip(Canvas c, float l, float r, String label, String value, int labelCol) {
+            glass(c, l, 12, r, 60, 16);
+            drawTextA(c, label, (l + r) / 2f, 31, 11, labelCol, r - l - 10, Paint.Align.CENTER);
+            drawTextA(c, value, (l + r) / 2f, 52, 20, Color.WHITE, r - l - 10, Paint.Align.CENTER);
+        }
+
+        private void drawHud(Canvas c) {
+            hudChip(c, 12, 136, tr("SCORE", "СЧЁТ", "PUNKTE"), String.valueOf(score), 0xffb9d5df);
+            hudChip(c, 146, 254, tr("COINS", "МОНЕТЫ", "MÜNZEN"), String.valueOf(coins), 0xffffdf75);
+            hudChip(c, 264, 388, tr("BEST", "РЕКОРД", "BEST"), String.valueOf(bestL[level]), 0xffb9d5df);
+            drawTextS(c, levelNames[level][lang], 14, 84, 12, 0xddffffff, 220, Paint.Align.LEFT);
+            if (state == PLAY) {
+                glass(c, 342, 74, 388, 120, 23);
+                icon(c, IC_PAUSE, 365, 97, 11, Color.WHITE);
+            }
+        }
+
+        // ================= ЭКРАНЫ =================
+        private void drawMenu(Canvas c) {
+            drawBackground(c);
+            drawFireflies(c);
+            dim(c, 0);
+
+            coinChip(c, 16, 18, 150, 54);
+            glass(c, 290, 18, 384, 54, 18);
+            icon(c, IC_GLOBE, 314, 36, 9, Color.WHITE);
+            drawTextA(c, langCodes[lang], 355, 43, 16, Color.WHITE, 40, Paint.Align.CENTER);
+
+            drawTitle(c, "SLIME", 200, 138, 74, Color.WHITE);
+            drawTitle(c, "RUSH", 200, 210, 74, skinColor(skin));
+            drawText(c, tr("THE LITTLE SLIME ADVENTURE", "ПРИКЛЮЧЕНИЯ МАЛЕНЬКОГО СЛАЙМА",
+                    "DAS KLEINE SCHLEIM-ABENTEUER"), 200, 240, 12, 0xddffffff);
+
+            float bob = (float) Math.sin(animation * 1.6f) * 5f;
+            setColor(0x44000000);
+            c.drawOval(160 + bob, 366, 240 - bob, 380, p);
+            drawSlimeCore(c, 166, 292, bob, 1f + (float) Math.sin(animation * 2f) * 0.03f, skin, acc);
+
+            candy(c, 50, 400, 350, 474, 0xff1fb26e, 26);
+            icon(c, IC_PLAY, 112, 437, 19, Color.WHITE);
+            drawTextS(c, tr("PLAY", "ИГРАТЬ", "SPIELEN"), 213, 448, 30, Color.WHITE, 160, Paint.Align.CENTER);
+
+            float[] tx = {50, 154, 258};
+            int[] ti = {IC_MAP, IC_SHOP, IC_GEAR};
+            int[] tc = {0xffd9822b, 0xff2f86c8, 0xff7a62c4};
+            String[] tl = {tr("LEVELS", "УРОВНИ", "LEVEL"), tr("SHOP", "МАГАЗИН", "SHOP"),
+                    tr("SETTINGS", "НАСТРОЙКИ", "EINSTELL.")};
+            for (int i = 0; i < 3; i++) {
+                candy(c, tx[i], 494, tx[i] + 92, 594, tc[i], 22);
+                icon(c, ti[i], tx[i] + 46, 531, 21, Color.WHITE);
+                drawTextS(c, tl[i], tx[i] + 46, 579, 13, Color.WHITE, 82, Paint.Align.CENTER);
+            }
+
+            glass(c, 50, 614, 350, 706, 20);
+            drawTextA(c, levelNames[level][lang], 68, 640, 15, Color.WHITE, 180, Paint.Align.LEFT);
+            starsRow(c, 308, 636, 8, starsFor(bestL[level]));
+            drawTextA(c, tr("BEST: ", "РЕКОРД: ", "BEST: ") + bestL[level], 68, 662, 13,
+                    0xffffdf75, 150, Paint.Align.LEFT);
+            if (level < NLEV - 1) {
+                float fr = Math.min(1f, bestL[level] / (float) levelNeed[level + 1]);
+                drawTextA(c, tr("NEXT LEVEL ", "ДО УРОВНЯ ", "NÄCHSTES ") + (int) (fr * 100) + "%",
+                        332, 662, 11, 0xffb9d5df, 140, Paint.Align.RIGHT);
+                bar(c, 68, 678, 332, 690, fr, 0xff1fb26e);
+            } else {
+                drawTextA(c, tr("MAX LEVEL", "МАКС. УРОВЕНЬ", "MAX. LEVEL"), 332, 662, 11,
+                        0xff63ed9c, 140, Paint.Align.RIGHT);
+            }
+
+            drawText(c, tr("TAP TO JUMP • AVOID OBSTACLES",
+                    "ТАП — ПРЫЖОК • ИЗБЕГАЙ ПРЕПЯТСТВИЙ",
+                    "TIPPEN = SPRINGEN • HINDERNISSE MEIDEN"), 200, 765, 12, 0xddffffff);
+            drawWeather(c);
+                }
+                private void levelPreview(Canvas c, int i, float l, float t, float r, float b) {
+            c.save();
+            c.clipRect(l, t, r, b);
+            p.setShader(new LinearGradient(0, t, 0, b,
+                    new int[]{skyCols[i][0], skyCols[i][1], skyCols[i][3]}, null, Shader.TileMode.CLAMP));
+            c.drawRect(l, t, r, b, p);
+            p.setShader(null);
+            float w = r - l, h = b - t;
+            setColor(celCol[i]);
+            c.drawCircle(l + w * 0.78f, t + h * 0.22f, h * 0.1f, p);
+            setColor(mtFar[i]);
+            tmp.reset();
+            tmp.moveTo(l, t + h * 0.62f);
+            tmp.lineTo(l + w * 0.25f, t + h * 0.3f);
+            tmp.lineTo(l + w * 0.45f, t + h * 0.55f);
+            tmp.lineTo(l + w * 0.68f, t + h * 0.25f);
+            tmp.lineTo(r, t + h * 0.6f);
+            tmp.lineTo(r, b);
+            tmp.lineTo(l, b);
+            tmp.close();
+            c.drawPath(tmp, p);
+            for (int k = 0; k < 4; k++) {
+                float tx = l + w * (0.12f + k * 0.25f);
+                float th = h * (0.38f + 0.1f * (k % 2));
+                setColor(k % 2 == 0 ? midC[i] : nearC[i]);
+                tmp.reset();
+                tmp.moveTo(tx, b - h * 0.2f - th);
+                tmp.lineTo(tx - w * 0.1f, b - h * 0.18f);
+                tmp.lineTo(tx + w * 0.1f, b - h * 0.18f);
+                tmp.close();
+                c.drawPath(tmp, p);
+            }
+            p.setShader(new LinearGradient(0, b - h * 0.2f, 0, b, grassA[i], grassB[i], Shader.TileMode.CLAMP));
+            c.drawRect(l, b - h * 0.2f, r, b, p);
+            p.setShader(null);
+            c.restore();
+        }
+
+        private void drawLevels(Canvas c) {
+            drawBackground(c);
+            dim(c, 0x50);
+            header(c, tr("LEVELS", "УРОВНИ", "LEVEL"));
+
+            for (int i = 0; i < NLEV; i++) {
+                float t = 100 + i * 118;
+                float l = 25, r = 375, b = t + 104;
+                boolean open = levelUnlocked(i);
+                glass(c, l, t, r, b, 22);
+                levelPreview(c, i, l + 10, t + 10, l + 124, b - 10);
+
+                drawTextS(c, levelNames[i][lang], l + 138, t + 34, 17,
+                        open ? Color.WHITE : 0xffa9b5c0, 150, Paint.Align.LEFT);
+                if (open) {
+                    starsRow(c, l + 160, t + 56, 9, starsFor(bestL[i]));
+                    drawTextA(c, tr("BEST: ", "РЕКОРД: ", "BEST: ") + bestL[i], l + 138, t + 84, 13,
+                            0xffffdf75, 150, Paint.Align.LEFT);
+                    if (i == level) {
+                        setColor(0xff1fb26e);
+                        c.drawCircle(r - 26, t + 30, 16, p);
+                        icon(c, IC_CHECK, r - 26, t + 30, 9, Color.WHITE);
+                    }
+                } else {
+                    setColor(0x88050d16);
+                    c.drawRoundRect(l, t, r, b, 22, 22, p);
+                    icon(c, IC_LOCK, r - 28, t + 32, 13, 0xffffd84a);
+                    drawTextA(c, tr(levelNeed[i] + " PTS ON PREVIOUS", levelNeed[i] + " ОЧКОВ НА ПРЕДЫДУЩЕМ",
+                            levelNeed[i] + " PKT. IM VORHERIGEN"), l + 138, t + 62, 11,
+                            0xffff9a7a, 200, Paint.Align.LEFT);
+                    bar(c, l + 138, t + 76, r - 18, t + 88,
+                            bestL[i - 1] / (float) levelNeed[i], 0xffd9822b);
+                }
+                if (i == level) {
+                    setColor(0xff63ed9c);
+                    p.setStyle(Paint.Style.STROKE);
+                    p.setStrokeWidth(3);
+                    c.drawRoundRect(l, t, r, b, 22, 22, p);
+                    p.setStyle(Paint.Style.FILL);
+                }
+            }
+        }
+
+        private void drawShop(Canvas c) {
+            drawBackground(c);
+            dim(c, 0x50);
+            header(c, tr("SLIME SHOP", "МАГАЗИН", "SLIME-SHOP"));
+
+            glass(c, 27, 88, 373, 140, 26);
+            for (int tb = 0; tb < 2; tb++) {
+                float l = tb == 0 ? 33 : 202, r = tb == 0 ? 198 : 367;
+                if (shopTab == tb) candy(c, l, 94, r, 134, 0xff2f86c8, 20);
+                String name = tb == 0 ? tr("SKINS", "СКИНЫ", "SKINS")
+                        : tr("ACCESSORIES", "АКСЕССУАРЫ", "ZUBEHÖR");
+                drawTextS(c, name, (l + r) / 2f, 121, 15, shopTab == tb ? Color.WHITE : 0xffb9d5df,
+                        r - l - 14, Paint.Align.CENTER);
+            }
+
+            int n = shopTab == 0 ? NSKIN : NACC;
+            int pages = (n + 5) / 6;
+            for (int r = 0; r < 3; r++) {
+                for (int col = 0; col < 2; col++) {
+                    int idx = shopPage * 6 + r * 2 + col;
+                    if (idx >= n) continue;
+                    float x0 = col == 0 ? 27 : 208;
+                    float y0 = 156 + r * 156;
+                    boolean equipped = shopTab == 0 ? skin == idx : acc == idx;
+                    boolean owned = shopTab == 0 ? skinOwn[idx] : accOwn[idx];
+                    int price = shopTab == 0 ? skinPrices[idx] : accPrices[idx];
+
+                    glass(c, x0, y0, x0 + 165, y0 + 146, 22);
+                    if (equipped) {
+                        setColor(0x3a1fb26e);
+                        c.drawRoundRect(x0, y0, x0 + 165, y0 + 146, 22, 22, p);
+                        setColor(0xff63ed9c);
+                        p.setStyle(Paint.Style.STROKE);
+                        p.setStrokeWidth(2.5f);
+                        c.drawRoundRect(x0, y0, x0 + 165, y0 + 146, 22, 22, p);
+                        p.setStyle(Paint.Style.FILL);
+                    }
+
+                    c.save();
+                    c.translate(x0 + 82, y0 + 56);
+                    c.scale(0.82f, 0.82f);
+                    drawSlimeCore(c, -34, -32, 0, 1f, shopTab == 0 ? idx : skin, shopTab == 0 ? acc : idx);
+                    c.restore();
+
+                    String name = shopTab == 0 ? skinNames[idx][lang] : accNames[idx][lang];
+                    drawTextS(c, name, x0 + 82, y0 + 106, 14, Color.WHITE, 148, Paint.Align.CENTER);
+
+                    float pl = x0 + 20, pr = x0 + 145, pt = y0 + 114, pb = y0 + 138;
+                    if (equipped) {
+                        candy(c, pl, pt, pr, pb, 0xff1fb26e, 12);
+                        icon(c, IC_CHECK, pl + 20, (pt + pb) / 2f, 7, Color.WHITE);
+                        drawTextA(c, tr("EQUIPPED", "ВЫБРАНО", "GEWÄHLT"), pl + 74, pb - 7, 12,
+                                Color.WHITE, 80, Paint.Align.CENTER);
+                    } else if (owned) {
+                        candy(c, pl, pt, pr, pb, 0xff2f86c8, 12);
+                        drawTextA(c, tr("SELECT", "ВЫБРАТЬ", "WÄHLEN"), (pl + pr) / 2f, pb - 7, 12,
+                                Color.WHITE, 100, Paint.Align.CENTER);
+                    } else {
+                        boolean can = coins >= price;
+                        candy(c, pl, pt, pr, pb, can ? 0xffd9a010 : 0xff7a3a3a, 12);
+                        icon(c, IC_COIN, pl + 18, (pt + pb) / 2f, 7, 0xffffe34a);
+                        drawTextA(c, String.valueOf(price), pl + 74, pb - 7, 13, Color.WHITE,
+                                80, Paint.Align.CENTER);
+                    }
+                }
+            }
+
+            candy(c, 34, 640, 94, 696, 0xff596b7b, 24);
+            icon(c, IC_BACK, 64, 668, 11, Color.WHITE);
+            candy(c, 306, 640, 366, 696, 0xff596b7b, 24);
+            p.setStyle(Paint.Style.FILL);
+            c.save();
+            c.rotate(180, 336, 668);
+            icon(c, IC_BACK, 336, 668, 11, Color.WHITE);
+            c.restore();
+            for (int i = 0; i < pages; i++) {
+                float dx = 200 + (i - (pages - 1) / 2f) * 20;
+                setColor(i == shopPage ? 0xffffffff : 0x55ffffff);
+                c.drawCircle(dx, 668, i == shopPage ? 6 : 4, p);
+            }
+        }
+
+        private void settingsRow(Canvas c, float t, int ic, String label, boolean on) {
+            glass(c, 30, t, 370, t + 76, 22);
+            icon(c, ic, 62, t + 38, 15, 0xffffd84a);
+            drawTextS(c, label, 90, t + 46, 20, Color.WHITE, 160, Paint.Align.LEFT);
+            toggle(c, 325, t + 38, on);
+        }
+
+        private void drawSettings(Canvas c) {
+            drawBackground(c);
+            dim(c, 0x50);
+            header(c, tr("SETTINGS", "НАСТРОЙКИ", "EINSTELLUNGEN"));
+
+            settingsRow(c, 100, IC_SOUND, tr("SOUND", "ЗВУК", "TON"), soundOn);
+            settingsRow(c, 190, IC_SPARK, tr("PARTICLES", "ЭФФЕКТЫ", "EFFEKTE"), particlesOn);
+
+            glass(c, 30, 280, 370, 532, 22);
+            icon(c, IC_GLOBE, 62, 314, 15, 0xffffd84a);
+            drawTextS(c, tr("LANGUAGE", "ЯЗЫК", "SPRACHE"), 90, 322, 20, Color.WHITE, 200, Paint.Align.LEFT);
+            for (int i = 0; i < 3; i++) {
+                float t = 346 + i * 58;
+                boolean sel = lang == i;
+                if (sel) {
+                    candy(c, 46, t, 354, t + 48, 0xff1fb26e, 16);
+                    icon(c, IC_CHECK, 76, t + 24, 10, Color.WHITE);
+                } else {
+                    setColor(0x22ffffff);
+                    c.drawRoundRect(46, t, 354, t + 48, 16, 16, p);
+                }
+                drawTextS(c, langNames[i], 205, t + 31, 18, sel ? Color.WHITE : 0xffc8dce5, 200, Paint.Align.CENTER);
+            }
+
+            drawText(c, "SLIME RUSH  •  v2.0", 200, 765, 12, 0x99ffffff);
+        }
+
+        private void drawPause(Canvas c) {
+            dim(c, 0x40);
+            glass(c, 40, 230, 360, 616, 28);
+            icon(c, IC_PAUSE, 200, 280, 20, Color.WHITE);
+            drawTextS(c, tr("PAUSED", "ПАУЗА", "PAUSE"), 200, 338, 34, Color.WHITE, 260, Paint.Align.CENTER);
+
+            candy(c, 65, 366, 335, 432, 0xff1fb26e, 24);
+            icon(c, IC_PLAY, 105, 399, 14, Color.WHITE);
+            drawTextS(c, tr("RESUME", "ПРОДОЛЖИТЬ", "WEITER"), 215, 409, 22, Color.WHITE, 170, Paint.Align.CENTER);
+            candy(c, 65, 448, 335, 514, 0xff2f86c8, 24);
+            icon(c, IC_RETRY, 105, 481, 14, Color.WHITE);
+            drawTextS(c, tr("RESTART", "ЗАНОВО", "NEUSTART"), 215, 491, 22, Color.WHITE, 170, Paint.Align.CENTER);
+            candy(c, 65, 530, 335, 590, 0xff596b7b, 24);
+            icon(c, IC_HOME, 105, 560, 14, Color.WHITE);
+            drawTextS(c, tr("MENU", "МЕНЮ", "MENÜ"), 215, 570, 22, Color.WHITE, 170, Paint.Align.CENTER);
+        }
+
+        private void drawGameOver(Canvas c) {
+            dim(c, 0x60);
+            glass(c, 30, 150, 370, 700, 30);
+
+            drawTextS(c, levelNames[level][lang], 200, 188, 13, 0xffb9d5df, 300, Paint.Align.CENTER);
+            drawTextS(c, tr("GAME OVER", "ИГРА ОКОНЧЕНА", "SPIEL VORBEI"), 200, 238, 34, 0xffff7777,
+                    300, Paint.Align.CENTER);
+            starsRow(c, 200, 282, 17, starsFor(score));
+
+            drawText(c, tr("SCORE", "СЧЁТ", "PUNKTE"), 200, 330, 14, 0xffb9d5df);
+            drawTextS(c, String.valueOf(score), 200, 395, 62, Color.WHITE, 280, Paint.Align.CENTER);
+            if (newBest) {
+                candy(c, 112, 410, 288, 440, 0xffd9a010, 15);
+                icon(c, IC_STAR, 134, 425, 9, Color.WHITE);
+                drawTextA(c, tr("NEW BEST!", "НОВЫЙ РЕКОРД!", "NEUER REKORD!"), 214, 431, 14,
+                        Color.WHITE, 130, Paint.Align.CENTER);
+            } else {
+                drawText(c, tr("BEST: ", "РЕКОРД: ", "BEST: ") + bestL[level], 200, 432, 17, 0xffffdf75);
+            }
+
+            glass(c, 60, 458, 340, 504, 16);
+            icon(c, IC_COIN, 96, 481, 11, 0xffffd84a);
+            drawTextA(c, "+" + coinsRun + "   " + tr("TOTAL: ", "ВСЕГО: ", "GESAMT: ") + coins, 212, 488, 16,
+                    Color.WHITE, 200, Paint.Align.CENTER);
+            if (newUnlock) {
+                drawTextS(c, tr("NEW LEVEL UNLOCKED!", "ОТКРЫТ НОВЫЙ УРОВЕНЬ!", "NEUES LEVEL FREIGESCHALTET!"),
+                        200, 535, 14, 0xff63ed9c, 300, Paint.Align.CENTER);
+            }
+
+            candy(c, 60, 552, 340, 616, 0xff1fb26e, 24);
+            icon(c, IC_RETRY, 100, 584, 14, Color.WHITE);
+            drawTextS(c, tr("TRY AGAIN", "ЕЩЁ РАЗ", "NOCHMAL"), 214, 594, 22, Color.WHITE, 170, Paint.Align.CENTER);
+            candy(c, 60, 628, 340, 688, 0xff596b7b, 24);
+            icon(c, IC_HOME, 100, 658, 14, Color.WHITE);
+            drawTextS(c, tr("MAIN MENU", "ГЛАВНОЕ МЕНЮ", "HAUPTMENÜ"), 214, 668, 22, Color.WHITE, 170, Paint.Align.CENTER);
+                              }
+                // ================= УПРАВЛЕНИЕ =================
+        private void buyOrSelect(int idx) {
+            boolean[] own = shopTab == 0 ? skinOwn : accOwn;
+            int[] price = shopTab == 0 ? skinPrices : accPrices;
+            if (shopTab == 1 && acc == idx && idx != 0) {
+                acc = 0;
+                saveData();
+                playTone(ToneGenerator.TONE_PROP_ACK, 80);
+                return;
+            }
+            if (!own[idx]) {
+                if (coins < price[idx]) {
+                    playTone(ToneGenerator.TONE_PROP_NACK, 150);
+                    return;
+                }
+                coins -= price[idx];
+                own[idx] = true;
+            }
+            if (shopTab == 0) skin = idx;
+            else acc = idx;
+            saveData();
+            playTone(ToneGenerator.TONE_PROP_ACK, 120);
+        }
+
+        private void handleShopTap(float x, float y) {
+            int n = shopTab == 0 ? NSKIN : NACC;
+            int pages = (n + 5) / 6;
+
+            if (x < 80 && y < 80) {
+                state = MENU;
+                return;
+            }
+            if (y >= 94 && y <= 134) {
+                if (x >= 33 && x <= 198) { shopTab = 0; shopPage = 0; }
+                else if (x >= 202 && x <= 367) { shopTab = 1; shopPage = 0; }
+                return;
+            }
+            if (y >= 640 && y <= 700) {
+                if (x >= 34 && x <= 94) shopPage = (shopPage + pages - 1) % pages;
+                else if (x >= 306 && x <= 366) shopPage = (shopPage + 1) % pages;
+                return;
+            }
+            for (int r = 0; r < 3; r++) {
+                for (int col = 0; col < 2; col++) {
+                    float x0 = col == 0 ? 27 : 208;
+                    float y0 = 156 + r * 156;
+                    if (x >= x0 && x <= x0 + 165 && y >= y0 && y <= y0 + 146) {
+                        int idx = shopPage * 6 + r * 2 + col;
+                        if (idx < n) buyOrSelect(idx);
+                        return;
+                    }
+                }
+            }
+        }
+
+        @Override
+        public boolean onTouchEvent(MotionEvent event) {
+            if (event.getActionMasked() != MotionEvent.ACTION_DOWN
+                    && event.getActionMasked() != MotionEvent.ACTION_POINTER_DOWN) {
+                return true;
+            }
+
+            float scale = Math.min(getWidth() / 400f, getHeight() / 800f);
+            if (scale <= 0) return true;
+            float dx = (getWidth() - 400 * scale) / 2f;
+            float dy = (getHeight() - 800 * scale) / 2f;
+
+            int idx = event.getActionIndex();
+            float x = (event.getX(idx) - dx) / scale;
+            float y = (event.getY(idx) - dy) / scale;
+
+            if (state == MENU) {
+                if (y >= 400 && y <= 474 && x >= 50 && x <= 350) {
+                    startGame();
+                } else if (y >= 494 && y <= 594) {
+                    if (x >= 50 && x <= 142) state = LEVELS;
+                    else if (x >= 154 && x <= 246) { state = SHOP; shopPage = 0; }
+                    else if (x >= 258 && x <= 350) state = SETTINGS;
+                } else if (y >= 18 && y <= 54 && x >= 290 && x <= 384) {
+                    lang = (lang + 1) % 3;
+                    saveData();
+                }
+            } else if (state == PLAY) {
+                if (x >= 335 && y <= 130) {
+                    state = PAUSE;
+                    shake = 0;
+                } else {
+                    jump();
+                }
+            } else if (state == LEVELS) {
+                if (x < 80 && y < 80) {
+                    state = MENU;
+                } else {
+                    for (int i = 0; i < NLEV; i++) {
+                        float top = 100 + i * 118;
+                        if (y >= top && y <= top + 104 && x >= 25 && x <= 375) {
+                            if (levelUnlocked(i)) {
+                                level = i;
+                                initWeather();
+                                saveData();
+                                playTone(ToneGenerator.TONE_PROP_ACK, 100);
+                                state = MENU;
+                            } else {
+                                playTone(ToneGenerator.TONE_PROP_NACK, 150);
+                            }
+                            break;
+                        }
+                    }
+                }
+            } else if (state == SHOP) {
+                handleShopTap(x, y);
+            } else if (state == SETTINGS) {
+                if (x < 80 && y < 80) {
+                    state = MENU;
+                } else if (y >= 100 && y <= 176) {
+                    soundOn = !soundOn;
+                    saveData();
+                } else if (y >= 190 && y <= 266) {
+                    particlesOn = !particlesOn;
+                    saveData();
+                } else {
+                    for (int i = 0; i < 3; i++) {
+                        float top = 346 + i * 58;
+                        if (y >= top && y <= top + 48 && x >= 46 && x <= 354) {
+                            lang = i;
+                            saveData();
+                            break;
+                        }
+                    }
+                }
+            } else if (state == PAUSE) {
+                if (y >= 366 && y <= 432) {
+                    state = PLAY;
+                    lastFrame = System.currentTimeMillis();
+                } else if (y >= 448 && y <= 514) {
+                    startGame();
+                } else if (y >= 530 && y <= 590) {
+                    state = MENU;
+                }
+            } else if (state == OVER) {
+                if (y >= 552 && y <= 616) {
+                    startGame();
+                } else if (y >= 628 && y <= 688) {
+                    state = MENU;
+                }
+            }
+
+            invalidate();
+            return true;
+        }
+    }
+                       }
